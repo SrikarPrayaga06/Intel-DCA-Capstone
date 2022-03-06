@@ -20,7 +20,7 @@
 				<!-- Header -->
 					<header id="header">
 						<div class="logo">
-							<span class="icon fa-gem"></span>
+							<span class="icon fa-microchip"></span>
 						</div>
 						<div class="content">
 							<div class="inner">
@@ -47,7 +47,7 @@
 						<!-- Intro -->
 							<article id="intro">
 								<h2 class="major">Intro</h2>
-								<span class="image main"><img src="images/pic01.jpg" alt="" /></span>
+								
 								<h1>Data Collection Overview </h1>
 								<p>
 									Addressing our problem statement entails understanding the sequence in which apps are launched and how much time is spent on each app. Additional features such as app window placement may indicate the likelihood of usage. To generate this data and required features, we built input libraries in C/C++, utilizing windows APIs from Intel’s proprietary XLSDK library. Each input library extracts data alongside collection timestamps. 
@@ -160,7 +160,7 @@
 						<!-- Work -->
 							<article id="work">
 								<h2 class="major">Work</h2>
-								<span class="image main"><img src="images/pic02.jpg" alt="" /></span>
+								
 								<h1>Exploratory Data Analysis</h1>
 								<p>We analyzed the collected foreground_window library data from two separate devices (referred to as user1 and user2) as it was used for our predictive models. We did not use the mouse_input.IL and user_wait.IL data since it did not pertain to our problem statements. Instead, we focused on predicting app sequences and usage times. Mouse positions and the amount of time spent on mouse cursors are therefore irrelevant. Data from the desktop mapper was not reliable enough to examine closely. 
 									Both users have been collecting data since late november but we decided to only train and test our models on data starting from January 3rd, which is the first day of school. This way, we manage skews in usage behaviors and can fairly contrast the two app usage profiles. For both users, we cleaned the data by first dropping the ID_INPUT and PRIVATE_DATA columns and renaming MEASUREMENT_TIME to “time” and VALUE to “window”, “is_immersive”, “next_window”, etc, depending on the feature in question. We then transformed the “time” column from a string to a date_time object. In the foreground window output table, we calculated a “time_spent” column for each app by subtracting consecutive row “time” values. In the window data, we observed some duplicate windows which occurred sporadically whenever users split screens or reshaped the window size. We simply dropped those rows as they account for the same app executable. For the immersive data, we noticed a few NaN values, which we replaced with 0.  
@@ -210,7 +210,7 @@
 						<!-- About -->
 							<article id="about">
 								<h2 class="major">About</h2>
-								<span class="image main"><img src="images/pic03.jpg" alt="" /></span>
+								
 								<h1>Prediction Overview</h1>
 								<p>We came up with 2 prediction problems to better understand app usage behaviors, using 3 weeks of our collected time-series window data starting from January 3rd 2022. 
 									<br>
