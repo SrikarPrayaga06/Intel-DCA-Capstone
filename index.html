@@ -20,11 +20,13 @@
 				<!-- Header -->
 					<header id="header">
 						<div class="logo">
+							
 							<span class="icon fa-microchip"></span>
 						</div>
 						<div class="content">
 							<div class="inner">
-								<h1>Intel Capstone Project</h1>
+								<h1>DSC 180A/B Capstone: Intel Telemetry</h1>
+								<h2> Team Members: Arjun Sawhney | Srikar Prayaga | Andrew Chin</h2>
 								<p> Despite advancements in hardware technology, PC users continue to face frustrating app launch times, especially on lower end Windows machines. The desktop experience differs vastly from the instantaneous app launches and optimized experience we have come to expect even from low end smartphones. <br>
 									We propose a solution to preemptively run Windows apps in the background based on the app usage patterns of the user. Our solution is two-step. First, we built telemetry collector modules to collect real-world app usage data from two of our personal Windows 10 devices. Next, we developed neural network models, trained on the collected data, to predict app usage times and corresponding launch sequences. We achieved impressive results on selected evaluation metrics across different user profiles. 
 								</p>
@@ -46,7 +48,7 @@
 
 						<!-- Intro -->
 							<article id="intro">
-								<h2 class="major">Intro</h2>
+								<h2 class="major">Data Collection</h2>
 								
 								<h1>Data Collection Overview </h1>
 								<p>
@@ -65,7 +67,7 @@
 									The mouse_input.IL project served as a predicate to the other input libraries. This task was designed to help us familiarize ourselves with the Windows development environment and accompanying configurations. As such, we incorporated Intel provided code into the static_standard_library sample template. The goal of this IL is to store and predict mouse movement data. Every 100 ms, we track the x and y position in pixel(s) of the mouse cursor and apply a 1D Kalman predictor to expose the inputs. We track the mouse noise in both the x and y positions as well as the Kalman predicted value in both dimensions. The following tables are the outputs of the mouse_input.IL:
 								</p>
 
-								<span class="center"><img src="images/mouse_input.png" alt="" width="500" height="600"/></span>
+								<span class="center"><img src="images/mouse_input.png" alt="" width="600" height="600"/></span>
 								<style>
 									img {
 									  display: block;
@@ -84,7 +86,7 @@
 								<p>
 									The outputs are automatically generated in a SQLITE database file. In the sample on the right, we see that the cursor value of 0(app starting) changes to 5 (standard arrow) and then to 0 (ibeam cursor) when we launch photoshop, then open MS Word and start typing. 
 								</p>
-								<span class="center"><img src="images/user_wait.png" alt="" width="500" height="600"/></span>
+								<span class="center"><img src="images/user_wait.png" alt="" width="600" height="600"/></span>
 								<style>
 									img {
 									  display: block;
@@ -98,11 +100,19 @@
 								</p>
 
 								<h2>Foreground Window IL </h2>
+								<span class="center"><img src="images/fw_slides.png" alt="" width="700" height="600"/></span>
+								<style>
+									img {
+									  display: block;
+									  margin-left: auto;
+									  margin-right: auto;
+									}
+									</style>
 								<p>
 									The purpose of the foreground_window IL is to detect and log the name of the executable whose app window sits atop all others. We implemented two waiting events to trigger the foreground window check: mouse clicks, and 1000ms time intervals. <br>
 								To detect these two events, we created a collector thread which calls on the WaitForMultipleObjects api function. As in user wait, an infinite while loop runs until it receives the stop_request (CTRL+C). To limit the size of our output, we made the decision to log the foreground window only if it is different from the previous foreground window. Therefore, we check if the current window’s process ID is different from the previously stored process ID. If so, we retrieve the executable token (the string.exe name) of the new foreground window and log it to our output table. Additionally, we captured the features “isImmersive” which checks if a process belongs to a Windows store app and “isHung'' which checks if the foreground window is unresponsive. Upon each detected foreground window change, we emit a custom IDCTL signal with the message “FOREGROUND-WINDOW-CHANGED” to be processed by the desktop_mapper IL. The collector pauses if the device enters screen-saver mode or a mouse is clicked over the collector, and stops running when CTRL+C (stop signal) is clicked. The string outputs appeared as expected in the form of app executable names. The accompanying isImmersive and isHung binary features are located in a separate table. 
 								</p>
-								<span class="center"><img src="images/foreground_window.png" alt="" width="631" height="214"/></span>
+								<span class="center"><img src="images/foreground_window.png" alt="" width="631" height="250"/></span>
 								<style>
 									img {
 									  display: block;
@@ -114,9 +124,19 @@
 									The primary challenge we faced in the foreground_window.IL was in regard to duplicate exe strings being logged with different timestamps despite our process checking logic. We deduced that this was because the user was using split windows for the app, resulting in two separate processes, and alternating their mouse back and forth between them. Since the split windows were for the same app executable, we decided to drop consecutive duplicates. This does not affect time spent on the app executable as this is calculated from the first measurement timestamp.
 								</p>
 								<h2>Desktop Mapper IL </h2>
+								<span class="center"><img src="images/dm_slides.png" alt="" width="700" height="600"/></span>
+								<style>
+									img {
+									  display: block;
+									  margin-left: auto;
+									  margin-right: auto;
+									}
+									</style>
 								<p>
-									The Desktop Mapper input library was the most challenging to develop. Although our implementation is not optimal, we hope to eventually enrich our prediction models with features from this data. The aim is to collect detailed information on every desktop window and understand where app windows are positioned with respect to each other. The data collection is triggered whenever the foreground_window emits an iDCTL signal. We implement multi-threaded processes consisting of the collector and the logger threads. However, we must first register the custom DCTL signal that we are expecting from the foreground window in modeler_open_inputs. In our case, it is a string that says “FOREGROUND-WINDOW-CHANGED.” The collector thread is then signaled to start collecting data through a custom waiting event titled h_foreground_window_changed. Similarly, the logger thread is also signaled to start logging by a wait event titled h_log_window_info after the data on all windows is stored in a desktop array by the collector thread.  Within the collector thread we define two essential functions that grab and store window information into an array of custom windows structures. The first function, get_window_info, captures many attributes of a window, including the executable names of the app windows above and below it on the z-axis, window rectangle geometry (in the form of a formatted string), as well as some other attributes such as isHung. To ensure that two processes do not attempt to write over our windows structure at the same time, we enter a CriticalSection before calling the get_window_info function. The second key function, map_desktop(), walks the Z-axis of the desktop from top to bottom and generates a single sample of all window structures by calling get_window_info. This is achieved using a while loop that runs until the topWindow turns null. After receiving the signal through the h_log_window_info custom event, the logger thread then logs data per desktop instance by calling a multiplex logging function. Once we verify that the logger is multiplex capable and is currently running, we unmask and update inputs to start logging window data. The logger outputs each window sample in the desktop array into a db file which is indexed by a timestamp representing the time the data was collected. 
-									We faced a substantial number of challenges building the desktop mapper including: passing references to our custom windows structures as inputs to the get_window_info function and performing multiplex logging with our desktop array. Ensuring that none of our processes overwrote the same bits of memory or the output table also required us to use CriticalSections. However, in doing so, we created a shadow period between the collection time and logging time which we were unable to address. The outputs from the desktop_mapper.IL therefore suffered from duplicate logs as well as mismatching timestamps. The output table contains stacked values of features including:
+									The Desktop Mapper input library was the most challenging to develop. The aim is to take a snapshot of the desktop and understand where app windows are located with respect to each other. Therefore, it functions by iterating through the z-axis of app windows, going from top to bottom, collecting data on each window’s properties. We collected each windows executable name, as well as that of the windows above and below it. We also collected information on the position and size of the window rectangle. 
+
+									To trigger Desktop Mapper data collection, we wait for a signal denoting a change in foreground window. This starts the collector thread, which stores all the window properties in a desktop array. After data collection is complete, the logger thread logs the desktop array to an output table. To ensure that no processes overwrite each other or the output table, we used best practices for thread safety. 
+ 									The output table contains stacked values of features including:
 									<!-- add list for --> 
 									<ul>
 										<li>Current Window Executable Name</li>
@@ -159,11 +179,20 @@
 
 						<!-- Work -->
 							<article id="work">
-								<h2 class="major">Work</h2>
+								<h2 class="major">EDA</h2>
 								
 								<h1>Exploratory Data Analysis</h1>
-								<p>We analyzed the collected foreground_window library data from two separate devices (referred to as user1 and user2) as it was used for our predictive models. We did not use the mouse_input.IL and user_wait.IL data since it did not pertain to our problem statements. Instead, we focused on predicting app sequences and usage times. Mouse positions and the amount of time spent on mouse cursors are therefore irrelevant. Data from the desktop mapper was not reliable enough to examine closely. 
-									Both users have been collecting data since late november but we decided to only train and test our models on data starting from January 3rd, which is the first day of school. This way, we manage skews in usage behaviors and can fairly contrast the two app usage profiles. For both users, we cleaned the data by first dropping the ID_INPUT and PRIVATE_DATA columns and renaming MEASUREMENT_TIME to “time” and VALUE to “window”, “is_immersive”, “next_window”, etc, depending on the feature in question. We then transformed the “time” column from a string to a date_time object. In the foreground window output table, we calculated a “time_spent” column for each app by subtracting consecutive row “time” values. In the window data, we observed some duplicate windows which occurred sporadically whenever users split screens or reshaped the window size. We simply dropped those rows as they account for the same app executable. For the immersive data, we noticed a few NaN values, which we replaced with 0.  
+								<p>
+									For any data science problem we need good quality data and being able to control the process of collection allows us to build features for our prediction problem. Since we were not provided any historic data for this project, we spent 10 weeks building data collector modules. 
+
+									They capture cursor type, active foreground windows, and window placement data which allows us to better understand the app usage behaviour of our users. Our collectors run in a low state mode without taxing system resources, allowing the user to use their computer naturally. We ran these collector modules on our personal devices for 3 weeks while university was in session.  
+									We collected three weeks of data on two of our personal PCs starting from January 3rd. User1 had 32 unique apps while user2 had 25 during the data collection period.
+
+									We noticed that most of the daily activity for both users revolved around chrome. In fact, chrome made up 30% and 35% of user1 and user2’s data, respectively. The second most common app, explorer.exe or the file explorer, made up around 18% and 20% of user1 and user2’s data, respectively.
+
+									The remaining app windows constituted less than 10% each, meaning both datasets are heavily imbalanced.
+
+  
 									Below are a series of visualizations and corresponding insights:
 								</p>
 								<p>
@@ -209,7 +238,7 @@
 
 						<!-- About -->
 							<article id="about">
-								<h2 class="major">About</h2>
+								<h2 class="major">Prediction</h2>
 								
 								<h1>Prediction Overview</h1>
 								<p>We came up with 2 prediction problems to better understand app usage behaviors, using 3 weeks of our collected time-series window data starting from January 3rd 2022. 
@@ -249,7 +278,7 @@
 									We utilized data from foreground_window.IL which produced window data as well as is_immersive data, all with timestamps. Since there were no apps that were unresponsive, the is_hung column was dropped. We did not delete the duplicates as it was important to see if an app would be opened after closing that same app. Feature engineering for the HMM involves the construction of transition and emission matrices. The transition matrix is an n x n matrix where n is the number of unique windows. The values in this matrix are the conditional probabilities of switching from one app window to the other. 
 									The emission matrix is a 1 x n matrix where n is the number of unique windows and the values contain a feature of each window. In our case, that feature is whether the window is immersive (belongs to the windows app store). This matrix allows us to enhance the accuracy of our model. The HMM can then be visualized as a as seen below:
 									</p>
-									<span class="center"><img src="images/hmm_1.png" alt="" width="750" height="280"/></span>	
+									<span class="center"><img src="images/hmm_1.png" alt="" width="750" height="400"/></span>	
 									<style>
 									img {
 									  display: block;
@@ -339,7 +368,7 @@
 
 						<!-- Contact -->
 							<article id="contact">
-								<h2 class="major">Contact</h2>
+								<h2 class="major">Conclusion</h2>
 								<h2>Real-World Implications</h2>
 								<p>The implications of our multivariate LSTM results are massive. Successfully forecasting app usage behavior means that we can further optimize the PC experience. Knowing when an app will be launched by the user means we can launch it preemptively in the background and largely eliminate that dreaded spinning wait cursor. And knowing how long apps will run would allow us to optimize system resources such as battery and memory. This solution can be very beneficial especially on low spec Windows machines which cannot have daily used apps constantly open in the background.
 								</p>
@@ -355,254 +384,8 @@
 										<li>Come up with a cloud based analytics system would stream data to AWS S3 and use other AWS resources like EMR and Sagemaker to run and deploy training jobs. </li>
 									</ul>
 								</p>
-
 								
-							</article>
-
-						<!-- Elements -->
-							<article id="elements">
-								<h2 class="major">Elements</h2>
-								<p>A typical data scientist rarely has control over the data collection process as the task is delegated to software engineers who build tools from which data is extracted. Since we built our own collector modules we were able to define the exact inputs needed for our model, control the polling frequency of the data, and define custom wait signals for data collection. 
-
-									We plan on modifying our existing foreground window collector to log results at regular time-series instead of mouse click burst events to eliminate lossy regularization. We also want to tune our desktop mapper collector to provide more reliable results. This way, we can enhance our multivariate LSTM and add new features to the emission matrix for HMM.
-								</p>
 								
-
-								<section>
-									<h3 class="major">Text</h3>
-									<p>This is <b>bold</b> and this is <strong>strong</strong>. This is <i>italic</i> and this is <em>emphasized</em>.
-									This is <sup>superscript</sup> text and this is <sub>subscript</sub> text.
-									This is <u>underlined</u> and this is code: <code>for (;;) { ... }</code>. Finally, <a href="#">this is a link</a>.</p>
-									<hr />
-									<h2>Heading Level 2</h2>
-									<h3>Heading Level 3</h3>
-									<h4>Heading Level 4</h4>
-									<h5>Heading Level 5</h5>
-									<h6>Heading Level 6</h6>
-									<hr />
-									<h4>Blockquote</h4>
-									<blockquote>Fringilla nisl. Donec accumsan interdum nisi, quis tincidunt felis sagittis eget tempus euismod. Vestibulum ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan faucibus. Vestibulum ante ipsum primis in faucibus lorem ipsum dolor sit amet nullam adipiscing eu felis.</blockquote>
-									<h4>Preformatted</h4>
-									<pre><code>i = 0;
-
-while (!deck.isInOrder()) {
-    print 'Iteration ' + i;
-    deck.shuffle();
-    i++;
-}
-
-print 'It took ' + i + ' iterations to sort the deck.';</code></pre>
-								</section>
-
-								<section>
-									<h3 class="major">Lists</h3>
-
-									<h4>Unordered</h4>
-									<ul>
-										<li>Dolor pulvinar etiam.</li>
-										<li>Sagittis adipiscing.</li>
-										<li>Felis enim feugiat.</li>
-									</ul>
-
-									<h4>Alternate</h4>
-									<ul class="alt">
-										<li>Dolor pulvinar etiam.</li>
-										<li>Sagittis adipiscing.</li>
-										<li>Felis enim feugiat.</li>
-									</ul>
-
-									<h4>Ordered</h4>
-									<ol>
-										<li>Dolor pulvinar etiam.</li>
-										<li>Etiam vel felis viverra.</li>
-										<li>Felis enim feugiat.</li>
-										<li>Dolor pulvinar etiam.</li>
-										<li>Etiam vel felis lorem.</li>
-										<li>Felis enim et feugiat.</li>
-									</ol>
-									<h4>Icons</h4>
-									<ul class="icons">
-										<li><a href="#" class="icon brands fa-twitter"><span class="label">Twitter</span></a></li>
-										<li><a href="#" class="icon brands fa-facebook-f"><span class="label">Facebook</span></a></li>
-										<li><a href="#" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
-										<li><a href="#" class="icon brands fa-github"><span class="label">Github</span></a></li>
-									</ul>
-
-									<h4>Actions</h4>
-									<ul class="actions">
-										<li><a href="#" class="button primary">Default</a></li>
-										<li><a href="#" class="button">Default</a></li>
-									</ul>
-									<ul class="actions stacked">
-										<li><a href="#" class="button primary">Default</a></li>
-										<li><a href="#" class="button">Default</a></li>
-									</ul>
-								</section>
-
-								<section>
-									<h3 class="major">Table</h3>
-									<h4>Default</h4>
-									<div class="table-wrapper">
-										<table>
-											<thead>
-												<tr>
-													<th>Name</th>
-													<th>Description</th>
-													<th>Price</th>
-												</tr>
-											</thead>
-											<tbody>
-												<tr>
-													<td>Item One</td>
-													<td>Ante turpis integer aliquet porttitor.</td>
-													<td>29.99</td>
-												</tr>
-												<tr>
-													<td>Item Two</td>
-													<td>Vis ac commodo adipiscing arcu aliquet.</td>
-													<td>19.99</td>
-												</tr>
-												<tr>
-													<td>Item Three</td>
-													<td> Morbi faucibus arcu accumsan lorem.</td>
-													<td>29.99</td>
-												</tr>
-												<tr>
-													<td>Item Four</td>
-													<td>Vitae integer tempus condimentum.</td>
-													<td>19.99</td>
-												</tr>
-												<tr>
-													<td>Item Five</td>
-													<td>Ante turpis integer aliquet porttitor.</td>
-													<td>29.99</td>
-												</tr>
-											</tbody>
-											<tfoot>
-												<tr>
-													<td colspan="2"></td>
-													<td>100.00</td>
-												</tr>
-											</tfoot>
-										</table>
-									</div>
-
-									<h4>Alternate</h4>
-									<div class="table-wrapper">
-										<table class="alt">
-											<thead>
-												<tr>
-													<th>Name</th>
-													<th>Description</th>
-													<th>Price</th>
-												</tr>
-											</thead>
-											<tbody>
-												<tr>
-													<td>Item One</td>
-													<td>Ante turpis integer aliquet porttitor.</td>
-													<td>29.99</td>
-												</tr>
-												<tr>
-													<td>Item Two</td>
-													<td>Vis ac commodo adipiscing arcu aliquet.</td>
-													<td>19.99</td>
-												</tr>
-												<tr>
-													<td>Item Three</td>
-													<td> Morbi faucibus arcu accumsan lorem.</td>
-													<td>29.99</td>
-												</tr>
-												<tr>
-													<td>Item Four</td>
-													<td>Vitae integer tempus condimentum.</td>
-													<td>19.99</td>
-												</tr>
-												<tr>
-													<td>Item Five</td>
-													<td>Ante turpis integer aliquet porttitor.</td>
-													<td>29.99</td>
-												</tr>
-											</tbody>
-											<tfoot>
-												<tr>
-													<td colspan="2"></td>
-													<td>100.00</td>
-												</tr>
-											</tfoot>
-										</table>
-									</div>
-								</section>
-
-								<section>
-									<h3 class="major">Buttons</h3>
-									<ul class="actions">
-										<li><a href="#" class="button primary">Primary</a></li>
-										<li><a href="#" class="button">Default</a></li>
-									</ul>
-									<ul class="actions">
-										<li><a href="#" class="button">Default</a></li>
-										<li><a href="#" class="button small">Small</a></li>
-									</ul>
-									<ul class="actions">
-										<li><a href="#" class="button primary icon solid fa-download">Icon</a></li>
-										<li><a href="#" class="button icon solid fa-download">Icon</a></li>
-									</ul>
-									<ul class="actions">
-										<li><span class="button primary disabled">Disabled</span></li>
-										<li><span class="button disabled">Disabled</span></li>
-									</ul>
-								</section>
-
-								<section>
-									<h3 class="major">Form</h3>
-									<form method="post" action="#">
-										<div class="fields">
-											<div class="field half">
-												<label for="demo-name">Name</label>
-												<input type="text" name="demo-name" id="demo-name" value="" placeholder="Jane Doe" />
-											</div>
-											<div class="field half">
-												<label for="demo-email">Email</label>
-												<input type="email" name="demo-email" id="demo-email" value="" placeholder="jane@untitled.tld" />
-											</div>
-											<div class="field">
-												<label for="demo-category">Category</label>
-												<select name="demo-category" id="demo-category">
-													<option value="">-</option>
-													<option value="1">Manufacturing</option>
-													<option value="1">Shipping</option>
-													<option value="1">Administration</option>
-													<option value="1">Human Resources</option>
-												</select>
-											</div>
-											<div class="field half">
-												<input type="radio" id="demo-priority-low" name="demo-priority" checked>
-												<label for="demo-priority-low">Low</label>
-											</div>
-											<div class="field half">
-												<input type="radio" id="demo-priority-high" name="demo-priority">
-												<label for="demo-priority-high">High</label>
-											</div>
-											<div class="field half">
-												<input type="checkbox" id="demo-copy" name="demo-copy">
-												<label for="demo-copy">Email me a copy</label>
-											</div>
-											<div class="field half">
-												<input type="checkbox" id="demo-human" name="demo-human" checked>
-												<label for="demo-human">Not a robot</label>
-											</div>
-											<div class="field">
-												<label for="demo-message">Message</label>
-												<textarea name="demo-message" id="demo-message" placeholder="Enter your message" rows="6"></textarea>
-											</div>
-										</div>
-										<ul class="actions">
-											<li><input type="submit" value="Send Message" class="primary" /></li>
-											<li><input type="reset" value="Reset" /></li>
-										</ul>
-									</form>
-								</section>
 
 							</article>
 
@@ -610,7 +393,7 @@ print 'It took ' + i + ' iterations to sort the deck.';</code></pre>
 
 				<!-- Footer -->
 					<footer id="footer">
-						<p class="copyright">&copy; Untitled. Design: <a href="https://html5up.net">HTML5 UP</a>.</p>
+						<p class="copyright">&copy; Group 1 Project B14. Design: <a href="https://html5up.net">HTML5 UP</a>.</p>
 					</footer>
 
 			</div>
